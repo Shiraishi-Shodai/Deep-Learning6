@@ -2,6 +2,7 @@ from collections import defaultdict
 import regex as re
 from tqdm import tqdm
 import time
+import pickle
 
 def count_pairs(ids, counts=None):
     if counts is None:
@@ -30,20 +31,6 @@ def pretokenize(text):
     # GPT-2で使用されている正規表現パターン
     pattern = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
     return re.findall(pattern, text)
-
-text = "Hello! I'm fine."
-
-pretokens = pretokenize(text)
-# print(pretokens)
-
-
-# # tqdmの使用例
-# for i in tqdm(range(100)):
-#     time.sleep(0.01)
-
-# # 引数のdescで説明文を追加
-# for i in tqdm(range(100), desc="Processing"):
-#     time.sleep(0.01)
 
 # 1. 特殊トークンで分割
 # 2. 事前トークン化
@@ -90,9 +77,6 @@ def train_bpe(input_text, vocab_size, end_token="<|endoftext|>"):
             
     return merge_rules
     
-rules = train_bpe("Hello, World. <|endoftext|> Good Bye!", 260)
-# print(rules)
-
 class BPETokenizer:
     def __init__(self, merge_rules, end_token="<|endoftext|>"):
         self.merge_rules = merge_rules
@@ -142,21 +126,9 @@ class BPETokenizer:
         text = text_bytes.decode("utf-8", errors="replace")
 
         return text
-           
-# 事前トークン化対応のBPE学習
-sample_text = "Say hello! Why hello? Just hello.<|endoftext|>Good morning!"
- 
-merge_rules = train_bpe(sample_text, vocab_size=270)
-tokenizer = BPETokenizer(merge_rules)
-
-# エンコード/デコード
-text = "Say hello!"
-ids = tokenizer.encode(text)
-decoded = tokenizer.decode(ids)
-
-print(ids)
-print(decoded)
-
-# 各トークンIDをデコードして確認
-for token_id in ids:
-    print(f"{token_id} -> '{tokenizer.decode([token_id])}'")
+    
+    @staticmethod
+    def load_from(filepath):
+        with open(filepath, "rb") as f:
+            merge_rules = pickle.load(f)
+        return BPETokenizer(merge_rules)
