@@ -2,46 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-B = 2  # バッチサイズ
-C = 4  # コンテキスト長
-E = 16 # 埋め込みの次元数
-H = 3  # ヘッド数
-D = 8  # 各ヘッドの次元数
-
-x = torch.randn(B, C, E)
-
-# 効率的な実装：全ヘッド分の重みを一つの行列にまとめる
-# W_q = nn.Linear(E, H*D, bias=False)
-# W_k = nn.Linear(E, H*D, bias=False)
-# W_v = nn.Linear(E, H*D, bias=False)
-
-# Q = W_q(x)
-# K = W_k(x)
-# V = W_v(x)
-
-# # 形状の変換
-# Q = Q.view(B, C, H, D).transpose(1, 2) # (B, H, C, D)
-# K = K.view(B, C, H, D).transpose(1, 2) # (B, H, C, D)
-# V = V.view(B, C, H, D).transpose(1, 2) # (B, H, C, D)
-
-# scores = torch.matmul(Q, K.transpose(-1, -2)) # (B, H, C, C)
-# scores = scores / (D ** 0.5)
-
-# mask = torch.tril(torch.ones(C, C, device=scores.device))
-# scores = scores.masked_fill(mask == 0, float('-inf'))
-
-# weights = F.softmax(scores, dim=-1)
-# hidden = torch.matmul(weights, V) # (B, H, C, D)
-
-# hidden = hidden.transpose(1, 2) # (B, C, H, D)
-# hidden = hidden.contiguous().view(B, C, H*D)
-
-# W_o = nn.Linear(H*D, E, bias=False)
-# output = W_o(hidden) # (B, C, E)
-
-# print(f"入力形状: {x.shape}")
-# print(f"出力形状: {output.shape}")
-
 class MultiHeadAttention(nn.Module):
     def __init__(self, embed_dim, n_head, head_dim, dropout_rate=0.1):
         super().__init__()
@@ -92,9 +52,54 @@ class MultiHeadAttention(nn.Module):
         output = self.output_dropout(output)
         
         return output
-        
-multi_head_attention = MultiHeadAttention(E, H, D, dropout_rate=0.1)
-output = multi_head_attention(x)
 
-print(f"入力形状: {x.shape}")
-print(f"出力形状: {output.shape}")
+class LayerNorm(nn.Module):
+    def __init__(self, embed_dim):
+        super().__init__()
+        self.gamma = nn.Parameter(torch.ones(embed_dim))
+        self.beta = nn.Parameter(torch.ones(embed_dim))
+        self.eps = 1e-5
+    
+    def forward(self, x):
+        mean = x.mean(dim=-1, keepdim=True)
+        var = x.var(dim=-1, keepdim=True, unbiased=False)
+        norm_x = (x - mean) / torch.sqrt(var + self.eps)
+        return self.gamma * norm_x + self.beta
+    
+
+class GELU(nn.Module):
+    def forward(self, x):
+        return 0.5 * x * (1 + torch.tanh(
+            torch.sqrt(torch.tensor(2.0 / torch.pi)) *
+            (x + 0.044715 * torch.pow(x, 3))
+        ))
+        
+class FNN(nn.Module):
+    def __init__(self, x_dim, hidden_dim=None, dropout_rate=0.1):
+        super().__init__()
+        if hidden_dim is None:
+            hidden_dim = int(4 * x_dim)
+        
+        self.layers = nn.Sequential(
+            nn.Linear(x_dim, hidden_dim),
+            GELU(),
+            nn.Linear(hidden_dim, x_dim),
+            nn.Dropout(dropout_rate)
+        )
+        
+    def forward(self, x):
+        return self.layers(x)
+
+class Block(nn.Module):
+    def __init__(self, embed_dim, n_head, ff_dim=None, dropout_rate=0.1):
+        super().__init__()
+        head_dim = embed_dim // n_head
+        self.norm1 = LayerNorm(embed_dim)
+        self.attn = MultiHeadAttention(embed_dim, n_head, head_dim, dropout_rate)
+        self.norm2 = LayerNorm(embed_dim)
+        self.ffn = FNN(embed_dim, ff_dim, dropout_rate)
+    
+    def forward(self, x):
+        x = x + self.attn(self.norm1(x))
+        x = x + self.ffn(self.norm2(x))
+        return x
