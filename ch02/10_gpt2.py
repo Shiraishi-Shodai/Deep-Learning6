@@ -54,6 +54,9 @@ class GPT(nn.Module):
         pos = torch.arange(0, C, dtype=torch.long, device=device)
         emb = self.embed(ids)
         pos_emb = self.pos_embed(pos)
+        
+        print(ids.shape, pos.shape)
+        print(emb.shape, pos_emb.shape)
         x = self.dropout(emb + pos_emb)
     
         # Transformerブロック
@@ -113,4 +116,3 @@ dummy_input = torch.randint(0, vocab_size, (1, max_context_len))
 logits = model(dummy_input)
 print(f"入力形状: {dummy_input.shape}")
 print(f"出力形状: {logits.shape}")
-print(dummy_input)
