@@ -147,7 +147,7 @@ class GPT(nn.Module):
         x = self.norm(x)
 
         logits = self.unembed(x)
-        return logits
+        return logits # (B, C, V)
 
     def save(self, file_path):
         checkpoint = {

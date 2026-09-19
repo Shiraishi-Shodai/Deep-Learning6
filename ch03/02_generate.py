@@ -38,7 +38,7 @@ def generate(model, tokenizer, prompt, max_new_tokens=1000, temperature=1.0):
             ids = ids[:, -model.max_context_len:]
         
         # 最後の位置のロジットを取得(次のトークン予測)
-        logits = model(ids)[:, -1, :] # (1, 1, V)
+        logits = model(ids)[:, -1, :] # (1, V) = (B, V)
         if temperature == 0:
             next_id = logits.argmax(dim=-1, keepdim=True)
         else:
@@ -54,7 +54,7 @@ def generate(model, tokenizer, prompt, max_new_tokens=1000, temperature=1.0):
         ids = torch.cat((ids, next_id), dim=1)
         generate_ids = torch.cat((generate_ids, next_id), dim=1)
     
-    # デコードして返す
+    # デコードして返す(id list → bytes list → text)
     generate_text = tokenizer.decode(generate_ids[0].tolist())
     return generate_text
 
