@@ -80,7 +80,7 @@ def generate_group(model, tokenizer, prompts, gts, group_size):
         for _ in range(group_size):
             full_text = generate(model, tokenizer, prompt, temperature=1.0)
             response = full_text[len(prompt):]
-            response.append(response)
+            responses.append(response)
         
         rewards = torch.tensor([calculate_reward(gt, r) for r in responses])
         advantages = rewards - rewards.mean()
@@ -88,19 +88,21 @@ def generate_group(model, tokenizer, prompts, gts, group_size):
         for response, advantage in zip(responses, advantages):
             all_prompts.append(prompt)
             all_responses.append(response)
-            all_advantages(advantages)
+            all_advantages.append(advantage)
     
     return all_prompts, all_responses, torch.stack(all_advantages)
 
 # 損失関数
 def compute_probs(model, ids):
     logits = model(ids) # (B, C, V)
-    probs = F.softmax(logits[:, -1, :], dim=-1)  # (B, C-1, V)
+    probs = F.softmax(logits[:, :-1, :], dim=-1)  # (B, C-1, V)
     labels = ids[:, 1:] # (B, C-1)
 
-    token_probs = torch.gether(
+    token_probs = torch.gather(
         probs, dim=-1, index=labels.unsqueeze(-1)
     ).squeeze(-1) # (B, C-1)
+    
+    return token_probs
 
 def grpo_loss(model, old_model, ids, mask, advantages, epsilon=0.2):
     # 現在モデルの各トークンの確率
@@ -109,14 +111,17 @@ def grpo_loss(model, old_model, ids, mask, advantages, epsilon=0.2):
     with torch.no_grad():
         old_probs = compute_probs(old_model, ids)
     
-    # トークンごとの確率日 (0除算防止のため微小地を加算)
+    # トークンごとの確率比 (0除算防止のため微小値を加算) 現在のモデルと古いモデルの正解ラベルを予測した確率の比を取る
     ratio = probs / (old_probs + 1e-8)
-    advantages = advantages.unsqueeze(-1)
+    advantages = advantages.unsqueeze(-1) # 1次元増やす
 
+    # 正解ラベルの予測比とアドバンテージを掛ける
     unclipped = ratio * advantages
+    # 正解ラベルの予測比をmin=1-epsilon, max=1+epsilon)の範囲に収めてからアドバンテージを掛ける
     clipped = torch.clamp(ratio, 1 - epsilon, 1 + epsilon) * advantages
     
     mask = mask[:, 1:] # マスクもシフト
+    # 各要素で比較し、小さい方を採用
     token_objective = torch.min(unclipped, clipped) * mask
     
     # サンプル数(batch_size * group_size)で正規化
@@ -174,7 +179,9 @@ for i in pbar:
     # 生成データに対して複数回更新
     for _ in range(n_update_per_generation):
         optimizer.zero_grad()
-        loss = grpo_loss(model, old_model, ids, mask, all_advantages, epsilon) # 勾配クリッピング
+        loss = grpo_loss(model, old_model, ids, mask, all_advantages, epsilon)
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) # 勾配クリッピング
         optimizer.step()
     
     # 定期的に評価
