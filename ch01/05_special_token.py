@@ -42,8 +42,8 @@ def train_bpe(input_text, vocab_size, end_token="<|endoftext|>"):
         for ids in ids_list:
             counts = count_pairs(ids, counts)
         
-        # if len(counts) == 0 :
-        #     break
+        if len(counts) == 0 :
+            break
         
         best_pair = max(counts, key=counts.get)
         new_id = 256 + step

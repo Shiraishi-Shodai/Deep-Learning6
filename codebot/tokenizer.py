@@ -44,6 +44,7 @@ def train_bpe(input_text, vocab_size, end_token="<|endoftext|>"):
     ids_list = []
     for text in texts:
         for pretoken in pretokenize(text): # 事前トークン化(意味をもつ単語ごとに区切る)
+            # str.encode("UTF-8")は、ASCIIで表示できる文字はb'X'とし、それ以外はb'16進数表記'とする。
             ids_list.append(list(pretoken.encode("utf-8"))) # 単語ごとにID列に変換
             # print(f"単語: {pretoken} → {list(pretoken.encode("utf-8"))}")
             

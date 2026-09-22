@@ -9,6 +9,7 @@ ids = list(text.encode("utf-8"))
 
 # 隣接する整数値のペアのカウントを取る
 def count_pairs(ids):
+    # defaultdict「辞書に存在しないキーへアクセスしたとき、自動的に初期値を作ってくれる辞書」
     counts = defaultdict(int)
     for pair in zip(ids, ids[1:]):
         # print(f"pair: {pair}")
@@ -51,6 +52,7 @@ def train_bpe(text, vocab_size):
     for step in range(num_merges):
         counts = count_pairs(ids)
 
+        # 空のdefaultdictが返ったらbreak
         if not counts:
             break
         
