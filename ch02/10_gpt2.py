@@ -55,8 +55,6 @@ class GPT(nn.Module):
         emb = self.embed(ids)
         pos_emb = self.pos_embed(pos)
         
-        print(ids.shape, pos.shape)
-        print(emb.shape, pos_emb.shape)
         x = self.dropout(emb + pos_emb)
     
         # Transformerブロック

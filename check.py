@@ -1,172 +1,121 @@
 import torch
 import torch.nn as nn
-from collections import defaultdict
-import re
+import torch.nn.functional as F
 
-text = "hello世界😄"
-# print(list(text))
-# print(ord("h"))
-# print(ord("😄"))
+class MultiHeadAttention(nn.Module):
+    def __init__(self, embed_dim, n_head, head_dim, dropout_rate=0.1):
+        super().__init__()
+        self.n_head = n_head
+        self.head_dim = head_dim
+        E, H, D = embed_dim, n_head, head_dim
+        
+        # 重みの初期化
+        self.W_q = nn.Linear(E, H*D, bias=False)
+        self.W_k = nn.Linear(E, H*D, bias=False)
+        self.W_v = nn.Linear(E, H*D, bias=False)
+        self.W_o = nn.Linear(H*D, E, bias=False)
 
-# print(chr(104))
-# print(chr(128516))
-
-# ids = [ord(char) for char in list(text)]
-# # print(ids)
-
-# class CharTokenizer:
-#     def encode(self, text):
-#         return [ord(char) for char in list(text)]
+        # ドロップアウトレイヤーの初期化
+        self.attention_dropout = nn.Dropout(dropout_rate)
+        self.output_dropout = nn.Dropout(dropout_rate)
     
-#     def decode(self, ids):
-#         return [chr(id) for id in ids]
+    def forward(self, x):
+        # x : (B, C, E)
+        B, C, E = x.shape
+        H, D = self.n_head, self.head_dim
+        
+        Q = self.W_q(x) # (B, C, H*D)
+        K = self.W_k(x) # (B, C, H*D)
+        V = self.W_v(x) # (B, C, H*D)
 
-# tokenizer = CharTokenizer()
-# encoded = tokenizer.encode(text)
-# decoded = tokenizer.decode(encoded)
+        # n_headごとにCとDを持つようデータを整形
+        # (B, C, H*D) → (B, H, C, D)
+        Q = Q.view(B, C, H, D).transpose(1, 2)
+        K = K.view(B, C, H, D).transpose(1, 2)
+        V = V.view(B, C, H, D).transpose(1, 2)
 
-# print(encoded)
-# print(decoded)
+        # Attentionの重み計算
+        scores = torch.matmul(Q, K.transpose(-1, -2)) # (B, H, C, C)
+        scores = scores / (D ** 0.05)
+        mask = torch.tril(torch.ones((C, C), device=scores.device))
+        scores = scores.masked_fill(mask == 0, float('-inf')) # マスクしたい要素の値をsoftmax後に0にするために-infとする
+        weights = F.softmax(scores, dim=-1)
 
-"""02_byte_tokenizer.py
-"""
-class ByteTokenizer:
-    def encode(self, text):
-        return list(text.encode("utf-8"))
+        # 出力計算
+        weights = self.attention_dropout(weights)
+        hidden = torch.matmul(weights, V) # (B, H, C, D)
+
+        # ヘッドの結合
+        hidden = hidden.transpose(1, 2) # (B, C, H, D)
+        hidden = hidden.contiguous().view(B, C, H*D) # (B, C, H*D)
+
+        # 出力変換
+        output = self.W_o(hidden) # (B, C, E)
+        output = self.output_dropout(output) # (B, C, E)
+
+        return output
+
+class LayerNorm(nn.Module):
+    def __init__(self, embed_dim):
+        super().__init__()
+        self.gamma = nn.Parameter(torch.ones(embed_dim))
+        self.beta = nn.Parameter(torch.ones(embed_dim))
+        self.eps = 1e-5
     
-    def decode(self, ids):
-        return bytes(ids).decode("utf-8")
-
-# encoded = 'A'.encode("utf-8")
-# print(encoded)
-# print(list(encoded))
-# encoded = "あ".encode("utf-8")
-# print(encoded)
-# print(list(encoded))
-
-# print(type(bytes(list(encoded)).decode("utf-8")))
-# print(type(bytes(list(encoded))))
-
-# tokenizer = ByteTokenizer()
-# text = "hello世界😆"
-# ids = tokenizer.encode(text)
-# decoded = tokenizer.decode(ids)
-
-# print(ids)
-# print(decoded)
-
-"""03_bpe_train.py
-"""
-def count_pairs(ids):
-    counts = defaultdict(int)
-    for pair in zip(ids, ids[1:]):
-        counts[pair] += 1
-    return counts
-
-# ids = [1, 2, 3, 1, 2]
-# counts = count_pairs(ids)
-# print(counts)
-
-def merge(ids, pair, new_id):
-    merge_ids = []
-    i = 0
+    def forward(self, x):
+        mean = x.mean(dim=-1, keepdim=True)
+        var = x.var(dim=-1, keepdim=True)
+        norm_x = (x - mean) / (torch.sqrt(var) + self.eps)
+        return self.gamma * norm_x + self.beta
     
-    while i < len(ids):
-        if i < len(ids) -1 and (ids[i], ids[i+1]) == pair:
-            merge_ids.append(new_id)
-            i += 2
-        else:
-            merge_ids.append(ids[i])
-            i += 1
-    return merge_ids
-
-
-ids = [1, 2, 3, 1, 2]
-merged = merge(ids, (1, 2), 4)
-# print(merged) # [4, 4, 2]
-
-def train_bpe(text, vocab_size):
-    ids = list(text.encode("utf-8"))
-
-    num_merges = vocab_size - 256
-    merge_rules = {}
-
-    for step in range(num_merges):
-        counts = count_pairs(ids)
-
-        if not counts:
-            break
+class GELU(nn.Module):
+    def forward(self, x):
+        return 0.5 * x * (1 + torch.tanh(
+            torch.sqrt(torch.tensor(2.0 / torch.pi)) *
+            (x + 0.044715 * torch.pow(x, 3))
+        ))
         
-        # tupleが返る
-        best_pair = max(counts, key=counts.get)
+class FNN(nn.Module):
+    def __init__(self, x_dim, hidden_dim=None, dropout_rate=0.1):
+        super().__init__()
+        if hidden_dim is None:
+            hidden_dim = int(4 * x_dim)
         
-        new_id = 256 + step
-        merge_rules[best_pair] = new_id
-        
-        # マージ実行
-        ids = merge(ids, best_pair, new_id)
-
-    return merge_rules
-
-# a = defaultdict(int)
-# a[(1, 2)] = 10
-# a[(0, 1)] = 1
-# print(max(a, key=a.get))
-
-# 使用例
-text = "Hello world! Thes is BPE training."
-
-# BPEを学習
-# merge_rules = train_bpe(text, 260)
-# print(merge_rules)
-
-"""04_bpe_tokenizer.py
-"""
-class BPETokenizer:
-    def __init__(self, merge_rules):
-        self.merge_rules = merge_rules
-        
-        self.id_to_bytes = {i: bytes([i]) for i in range(256)}
-        
-        for(id1, id2), new_id in self.merge_rules.items():
-            self.id_to_bytes[new_id] = self.id_to_bytes[id1] + self.id_to_bytes[id2]
-            self.vocab_size = len(self.id_to_bytes)
+        self.layers = nn.Sequential(
+            nn.Linear(x_dim, hidden_dim),
+            GELU(),
+            nn.Linear(hidden_dim, x_dim),
+            nn.Dropout(dropout_rate)
+        )
     
-    def encode(self, text):
-        ids = list(text.encode("utf-8"))
-        for merge_pair, new_id in self.merge_rules.items():
-            ids = merge(ids, merge_pair, new_id)
-        
-        return ids
+    def forward(self, x):
+        return self.layers(x)
 
-    def decode(self, ids):
-        byte_list = [self.id_to_bytes[i] for i in ids]
-        text_bytes = b"".join(byte_list)
-        text = text_bytes.decode("utf-8", errors="replace")
-        return text
+class Block(nn.Module):
+    def __init__(self, embed_dim, n_head, ff_dim=None, dropout_rate=0.1):
+        super().__init__()
+        head_dim = embed_dim // n_head
+        self.attn = MultiHeadAttention(embed_dim=embed_dim, n_head=n_head, head_dim=head_dim, dropout_rate=dropout_rate)
+        self.fnn = FNN(x_dim=embed_dim, hidden_dim=head_dim, dropout_rate=dropout_rate)
+        self.norm1 = LayerNorm(embed_dim=embed_dim)
+        self.norm2 = LayerNorm(embed_dim=embed_dim)
+    
+    def forward(self, x):
+        x = x + self.attn(self.norm1(x))
+        x = x + self.fnn(self.norm2(x))
+        return x
+    
+B = 2  # バッチサイズ
+C = 4  # コンテキスト長
+E = 16 # 埋め込みの次元数
+H = 3  # ヘッド数
+D = 8  # 各ヘッドの次元数
 
-# サンプルマージルール
-merge_rules = {(105, 115) : 256, (256, 32) : 257,
-               (105, 110) : 258, (72, 101) : 259}
+x = torch.randn(B, C, E)
+# ma = MultiHeadAttention(embed_dim=E, n_head=H, head_dim=D, dropout_rate=0.1)
+# fnn = FNN(x_dim=E, hidden_dim=None, dropout_rate=0.1)
+# output = fnn(x)
 
-# トークナイザ作成
-# tokenizer = BPETokenizer(merge_rules)
-# text = "Hello世界😆"
-# ids = tokenizer.encode(text)
-# decoded = tokenizer.decode(ids)
-
-# print(ids)
-# print(decoded)
-# print(tokenizer.id_to_bytes)
-
-"""05_special_tokenizer.py
-"""
-# text =  "a/b"
-# pattern = "(" + re.escape("/") + ")"
-# result = re.split(pattern, text)
-# print(result)
-
-# a = [1, 2]
-# b = [2, 3]
-# a.extend(b)
-# print(a)
+block = Block(embed_dim=E, n_head=H, ff_dim=None, dropout_rate=0.1)
+output = block(x)
+print(output.shape)
