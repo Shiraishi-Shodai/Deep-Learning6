@@ -1,3 +1,11 @@
+---
+name: ❓ 学習中の疑問
+about: 学習中に生まれた疑問を記録する
+title: "[Question] "
+labels: "question"
+assignees: ""
+---
+
 ## 💡 回答
 
 {{回答}}
