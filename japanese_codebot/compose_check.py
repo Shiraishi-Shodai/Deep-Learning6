@@ -1,17 +1,17 @@
 from tokenizer import *
 import io
 
-# === pretokenizer ===
+""" pretokenizer """
 # text = "hello hello hello world"
 # for i in pretokenize(text):
 #     print(i)
 
-# === count_pairs ===
+""" count_pairs """
 # text = "hello"
 # counts = count_pairs(list(text.encode("utf-8")), 3)
 # print(counts)
 
-# === merge ===
+""" merge """
 # text = "hello"
 # ids = list(text.encode("utf-8")) # [104, 101, 108, 108, 111]
 # pair = (108, 108)
@@ -20,7 +20,7 @@ import io
 # merged_ids = merge(ids, pair, new_id) # [104, 101, 256, 111]
 # print(merged_ids)
 
-# === find_chunk_boundaries ===
+""" find_chunk_boundaries """
 file_path = "japanese_codebot/dataset.txt"
 end_token = "<|endoftext|>"
 num_chunks = 10
@@ -81,16 +81,16 @@ num_chunks = 10
 
 
 # 3. 動作確認
-chunk_boundaries = find_chunk_boundaries(file_path, num_chunks)
-total_chunk = len(chunk_boundaries) - 1
+# chunk_boundaries = find_chunk_boundaries(file_path, num_chunks)
+# total_chunk = len(chunk_boundaries) - 1
 
-for i in range(total_chunk):
-    start = chunk_boundaries[i]
-    end = chunk_boundaries[i+1]
+# for i in range(total_chunk):
+#     start = chunk_boundaries[i]
+#     end = chunk_boundaries[i+1]
     
-    with open(file_path, "rb") as f:
-        f.seek(start)
-        chunk_byte = f.read(end - start)
-        chunk_text = chunk_byte.decode("utf-8", errors="ignore")
-        print(f"===読み込み開始===, start={start}, end={end}")
-        print(chunk_text)
+#     with open(file_path, "rb") as f:
+#         f.seek(start)
+#         chunk_byte = f.read(end - start)
+#         chunk_text = chunk_byte.decode("utf-8", errors="ignore")
+#         print(f""""読み込み開始""", start={start}, end={end}")
+#         print(chunk_text)

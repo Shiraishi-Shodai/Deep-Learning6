@@ -93,4 +93,9 @@ def find_chunk_boundaries(file_path, num_chunks, end_token="<|endoftext|>"):
                 # 調整した位置から次のbufferを読めるようにファイルポインタを移動
                 file.seek(chunk_position)
     
+    # 等間隔で作った開始位置をそれぞれ動かすため、開始位置の大小関係が崩れるたり、
+    # たまたま開始位置がかぶる可能性がある。
+    # これを整形する
+    # 大小関係の崩壊例) [i, i + chunk_size] → [i + chunk_size + 10, i + chunk_size]
+    # 開始位置の重複例) [i, i + chunk_size] → [i + chunk_size, i + chunk_size]
     return sorted(set(chunk_boundaries))
