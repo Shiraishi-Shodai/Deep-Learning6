@@ -4,6 +4,7 @@ sys.path.append(".")
 from collections import defaultdict
 import regex as re
 from tqdm import tqdm
+import numpy as np
 
 def pretokenize(text):
     pattern = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
@@ -75,4 +76,9 @@ file_path = "codebot/tiny_codes.txt"
 text = open(file_path).read()
 merge_rules = train_bpe(input_text=text, vocab_size=vocab_size, end_token="<|endoftext|>")
 
-print(merge_rules)
+# numpy配列に変換して保存
+ids_array = np.array(ids, dtype=np.uint16)
+ids_array.tofile("codebot/tiny_codes.bin")
+
+print(f"トークンID数: {len(ids_array)}")
+print(f"最初の20個のトークンID: {ids_array[:20]}")
