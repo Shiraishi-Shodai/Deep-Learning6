@@ -113,11 +113,54 @@ end = 4960
 
 """train_bpe"""
 file_path = "japanese_codebot/dataset.txt"
-vocab_size = 257
+vocab_size = 500
 end_token = "<|endoftext|>"
 num_processes = 8
 num_chunks = 8
 
+merge_filepath = "japanese_codebot/merge_rules.pkl"
+
+# if __name__ == "__main__":
+#     merge_rules = train_bpe(file_path, vocab_size, end_token, num_processes, num_chunks)
+    
+#     with open(merge_filepath, "wb") as f:
+#         pickle.dump(merge_rules, f)
+    
+"""BPE"""
 if __name__ == "__main__":
-    merge_rules = train_bpe(file_path, vocab_size, end_token, num_processes, num_chunks)
-    print(merge_rules)
+    # tokenizer = BPETokenizer.load_from(merge_filepath)
+
+    """_encode"""
+    # counts = {
+    #     (1, 2) : 3,
+    #     (2, 1) : 2,
+    #     (1, 5) : 1,
+    #     (100, 10) : 2,
+    # }
+    
+    # merge_rules = {
+    #     (1, 2) : 3,
+    #     (2, 1) : 2,
+    #     (1, 5) : 10
+    # }
+    
+    # def get_merge_priority(pair):
+    #     return merge_rules.get(pair, float('inf'))  # 存在しないペアは最低優先度    
+    
+    # best_pair = min(counts, key=get_merge_priority)
+
+    # print(best_pair)
+    
+    """encode"""
+    input_text = "Hello" + end_token + "World"
+    # pattern = '(' + re.escape(end_token) + ')'
+    # texts = re.split(pattern, input_text)
+    # print(texts)
+    # print(input_text)
+    
+    # tokenizer = BPETokenizer.load_from(merge_filepath)
+    # all_ids = tokenizer.encode(input_text)
+    # print(all_ids)
+    
+    """_encode_chunk"""
+    tokenizer = BPETokenizer.load_from(merge_filepath)
