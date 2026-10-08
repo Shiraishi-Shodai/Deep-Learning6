@@ -113,10 +113,11 @@ end = 4960
 
 """train_bpe"""
 file_path = "japanese_codebot/dataset.txt"
-vocab_size = 10000
+vocab_size = 257
 end_token = "<|endoftext|>"
 num_processes = 8
 num_chunks = 8
 
 if __name__ == "__main__":
-    train_bpe(file_path, vocab_size, end_token, num_processes, num_chunks)
+    merge_rules = train_bpe(file_path, vocab_size, end_token, num_processes, num_chunks)
+    print(merge_rules)

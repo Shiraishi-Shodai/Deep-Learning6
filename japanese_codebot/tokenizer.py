@@ -127,6 +127,8 @@ def pretoken_chunk(args):
 
 
 def train_bpe(file_path, vocab_size, end_token="<|endoftext|>", num_processes=8, num_chunks=8):
+    assert vocab_size > 256 + 1,  "vocab_sizeは256+特殊トークン数より大きな値を設定してください。マージルールが作れません"
+    
     # ステップ1: チャンクの準備
     chunk_boundaries = find_chunk_boundaries(file_path, num_chunks)
     total_chunk = len(chunk_boundaries) - 1
@@ -148,11 +150,67 @@ def train_bpe(file_path, vocab_size, end_token="<|endoftext|>", num_processes=8,
             pretoken_counts[pretoken] += count
 
     
-    # 事前トークンをbyte ID列に変換
+    # ステップ4: 事前トークンをbyte ID列に変換(ids_counts)
+    # 例     : {
+    #              [123, 213, 223, 12, 54] : 3,
+    #              [215, 210, 134, 10, 84] : 5
+    #          }
     ids_counts = {tuple(pretoken.encode("utf-8")) : count for pretoken, count in pretoken_counts.items()}
 
+    # ステップ5: キャッシュにトークンを追加(pair_to_ids)
+    # 例      : {
+    #               (123, 213) : [123, 213, 223, 12, 54],
+    #               (213, 223) : [123, 213, 223, 12, 54]
+    #           }
     num_merges = vocab_size - 256 - 1
     merge_rules = {}
-    pair_to_ids = defaultdict(int) # キャッシュ
+    pair_to_ids = defaultdict(set) # キャッシュ
     
+    pair_counts = defaultdict(int)
+    for ids, count in ids_counts.items():
+        count_pairs(ids, count, pair_counts)
+        for pair in zip(ids, ids[1:]): # キャッシュに登録
+            pair_to_ids[pair].add(ids)
+
+    # ステップ6: マージルールの生成
+    #           キャッシュと事前トークンのカウントを更新
+    for step in tqdm(range(num_merges), desc="Training BPE"):
+        if not pair_counts: # ペアが存在しない場合
+            break
+            
+        # 最頻出ペアを選択
+        best_pair = max(pair_counts, key=lambda pair: (pair_counts[pair], pair[0], pair[1]))
+        new_id = 256 + step
+        merge_rules[best_pair] = new_id
+        
+        # best_pairを含むids列をキャッシュから取得
+        affected_ids = pair_to_ids[best_pair]
+        del pair_to_ids[best_pair] # 使わないので削除
     
+        # 影響のあるID列だけを更新
+        # 更新対象
+        #    ids_counts   : bytesとcountの辞書
+        #    pair_to_ids  : キャッシュ
+        for ids in affected_ids:
+            ids_count = ids_counts[tuple(ids)]
+            new_ids = merge(ids, best_pair, new_id)
+
+            del ids_counts[tuple(ids)] # 古いIDを削除
+            ids_counts[tuple(new_ids)] = ids_count # 新しいID列を追加
+            
+            # キャッシュから古いペア頻度を減少
+            old_counts = count_pairs(ids)
+            for pair, count in old_counts.items():
+                pair_counts[pair] -= count * ids_count # 単語内の隣り合うIDが連続した回数 * ファイル内の単語の出現頻度
+                if pair_counts[pair] <= 0:
+                    del pair_counts[pair]
+                # 古いペアを持つトークンを一旦削除
+                pair_to_ids[pair].discard(tuple(ids))
+
+            # キャッシュに新しいペアを頻度を増加
+            new_counts = count_pairs(new_ids)
+            for pair, count in new_counts.items():
+                pair_counts[pair] += count * ids_count # 単語内の隣り合うIDが連続した回数 * ファイル内の単語の出現頻度
+                pair_to_ids[pair].add(tuple(new_ids))
+    
+    return merge_rules
