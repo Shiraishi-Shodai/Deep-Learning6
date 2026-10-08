@@ -1,14 +1,3 @@
-
-# # トークナイザーを読み込み
-
-# # テキストを読みこみ
-# text_file = "japanese_codebot/dataset.txt"
-# text = open(text_file).read()
-
-# # テキストをトークンIDに変換(進捗バーを表示)
-
-# # numpy配列に変換して保存
-
 import os
 import pickle
 from multiprocessing import Pool
@@ -99,3 +88,71 @@ def find_chunk_boundaries(file_path, num_chunks, end_token="<|endoftext|>"):
     # 大小関係の崩壊例) [i, i + chunk_size] → [i + chunk_size + 10, i + chunk_size]
     # 開始位置の重複例) [i, i + chunk_size] → [i + chunk_size, i + chunk_size]
     return sorted(set(chunk_boundaries))
+
+def process_single_chunk(file_path, start, end, end_token="<|endoftext|>"):
+    pretoken_counts = defaultdict(int) # (key, value) = (token : string, token count : int)
+
+    with open(file_path, "rb") as f:
+        f.seek(start)
+        chunk_byte = f.read(end - start)
+        chunk_text = chunk_byte.decode("utf-8", errors="ignore")
+
+        # 特殊トークンで分割
+        texts = chunk_text.split(end_token)
+
+        # 事前トークン化
+        for text in texts:
+            for pretoken in pretokenize(text):
+                pretoken_counts[pretoken] += 1
+    
+    return pretoken_counts
+
+def pretoken_chunk(args):
+    file_path, start, end, end_token = args
+    pretoken_counts = defaultdict(int)
+
+    # ファイルを開いてチャンクを読み込む
+    with open(file_path, "rb") as f:
+        f.seek(start)
+        chunk_byte = f.read(end - start)
+        chunk_text = chunk_byte.decode("utf-8", errors="ignore")
+
+        texts = chunk_text.split(end_token)
+
+        for text in texts:
+            for pretoken in pretokenize(text):
+                pretoken_counts[pretoken] += 1
+    
+    return pretoken_counts
+
+
+def train_bpe(file_path, vocab_size, end_token="<|endoftext|>", num_processes=8, num_chunks=8):
+    # ステップ1: チャンクの準備
+    chunk_boundaries = find_chunk_boundaries(file_path, num_chunks)
+    total_chunk = len(chunk_boundaries) - 1
+    
+    chunk_info_list = []
+    for i in range(total_chunk):
+        start = chunk_boundaries[i]
+        end = chunk_boundaries[i+1]
+        chunk_info_list.append((file_path, start, end, end_token))
+    
+    # ステップ2: 並列処理
+    with Pool(processes=num_processes) as pool:
+        all_results = list(tqdm(pool.imap(pretoken_chunk, chunk_info_list), total=len(chunk_info_list), desc="Pretokenizing"))
+
+    # ステップ3: 事前トークン結果を統合
+    pretoken_counts = defaultdict(int)
+    for chunk_result in all_results:
+        for pretoken, count in chunk_result.items():
+            pretoken_counts[pretoken] += count
+
+    
+    # 事前トークンをbyte ID列に変換
+    ids_counts = {tuple(pretoken.encode("utf-8")) : count for pretoken, count in pretoken_counts.items()}
+
+    num_merges = vocab_size - 256 - 1
+    merge_rules = {}
+    pair_to_ids = defaultdict(int) # キャッシュ
+    
+    

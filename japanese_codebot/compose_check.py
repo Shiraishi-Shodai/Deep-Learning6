@@ -94,3 +94,29 @@ num_chunks = 10
 #         chunk_text = chunk_byte.decode("utf-8", errors="ignore")
 #         print(f""""読み込み開始""", start={start}, end={end}")
 #         print(chunk_text)
+
+
+"""process_single_chunk"""
+file_path = "japanese_codebot/dataset.txt"
+end_token = "<|endoftext|>"
+start = 0
+end = 4960
+
+# pretoken_counts = process_single_chunk(file_path, start, end, end_token)
+# print(pretoken_counts)
+
+
+"""pretoken_chunkc"""
+# args = (file_path, start, end, end_token)
+# pretoken_counts = pretoken_chunk(args)
+# print(pretoken_counts)
+
+"""train_bpe"""
+file_path = "japanese_codebot/dataset.txt"
+vocab_size = 10000
+end_token = "<|endoftext|>"
+num_processes = 8
+num_chunks = 8
+
+if __name__ == "__main__":
+    train_bpe(file_path, vocab_size, end_token, num_processes, num_chunks)
